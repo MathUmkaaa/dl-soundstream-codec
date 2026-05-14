@@ -1,0 +1,11 @@
+train:
+  _target_: src.datasets.LibriSpeechDataset
+  data_dir: /kaggle/input/librispeech/LibriSpeech/train-clean-100
+  name: "train"
+  instance_transforms: ${transforms.instance_transforms.train}
+test:
+  _target_: src.datasets.LibriSpeechDataset
+  data_dir: /kaggle/input/librispeech/LibriSpeech/test-clean
+  name: "test"
+  limit: 200
+  instance_transforms: ${transforms.instance_transforms.inference}
