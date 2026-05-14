@@ -1,0 +1,60 @@
+defaults:
+  - writer: cometml
+  - datasets: libri_speech
+  - _self_
+model:
+  _target_: src.model.SoundStream
+discriminator:
+  _target_: src.model.MultiDiscriminator
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 1e-4
+  betas: [0.5, 0.9]
+lr_scheduler:
+  _target_: torch.optim.lr_scheduler.StepLR
+  gamma: 1.0
+  step_size: ${trainer.epoch_len}
+loss_function:
+  _target_: src.loss.SoundStreamLoss
+  sample_rate: 16000
+metrics:
+  train: []
+  inference: []
+transforms:
+  batch_transforms:
+    train: null
+    inference: null
+  instance_transforms:
+    train: null
+    inference: null
+trainer:
+  log_step: 50
+  n_epochs: 45
+  epoch_len: 1000
+  max_grad_norm: 1.0
+  device_tensors: ["audio"] # which tensors should be on device (ex. GPU)
+  resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
+  device: auto # device name or "auto"
+  override: True # if True, will override the previous run with the same name
+  monitor: "min test_loss" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
+  save_period: 1 # checkpoint each save_period epochs in addition to the best epoch
+  early_stop: ${trainer.n_epochs} # epochs for early stopping
+  save_dir: "saved"
+  seed: 1
+  skip_oom: True
+writer:
+  project_name: "soundstream"
+  run_name: "sound_stream"
+  mode: "online"
+  loss_names: ["loss", "loss_g", "loss_d", "loss_rec", "loss_adv", "loss_feat", "loss_commit", "codebook_perplexity", "grad_norm", "STOI"]
+  log_checkpoints: False
+dataloader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: 12
+  num_workers: 2
+  pin_memory: True
+datasets:
+  train:
+    data_dir: /kaggle/input/librispeech/LibriSpeech/train-clean-100
+  test:
+    data_dir: /kaggle/input/librispeech/LibriSpeech/test-clean

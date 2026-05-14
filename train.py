@@ -12,7 +12,7 @@ from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-@hydra.main(version_base=None, config_path="src/configs", config_name="baseline")
+@hydra.main(version_base=None, config_path="src/configs", config_name="sound_stream")
 def main(config):
     """
     Main script for training. Instantiates the model, optimizer, scheduler,
@@ -41,6 +41,11 @@ def main(config):
     model = instantiate(config.model).to(device)
     logger.info(model)
 
+    discriminator = None
+    if config.get("discriminator") is not None:
+        discriminator = instantiate(config.discriminator).to(device)
+        logger.info(discriminator)
+
     # get function handles of loss and metrics
     loss_function = instantiate(config.loss_function).to(device)
     metrics = instantiate(config.metrics)
@@ -67,6 +72,7 @@ def main(config):
         logger=logger,
         writer=writer,
         batch_transforms=batch_transforms,
+        discriminator=discriminator,
         skip_oom=config.trainer.get("skip_oom", True),
     )
 
