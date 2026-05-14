@@ -1,11 +1,45 @@
+import torch
+from torchmetrics.audio import ShortTimeObjectiveIntelligibility
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
-
+from src.model.discriminator import MultiDiscriminator
 
 class Trainer(BaseTrainer):
     """
     Trainer class. Defines the logic of batch logging and processing.
     """
+
+    def __init__(self, *args, discriminator=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loss = self.criterion
+        if discriminator is None:
+            discriminator = MultiDiscriminator()
+        self.discriminator = discriminator.to(self.device)
+        self.stoi = ShortTimeObjectiveIntelligibility(fs=16000, extended=False).to(self.device)
+        self.opt_g, self.opt_d = self._get_opts()
+
+    def _get_opts(self):
+        if isinstance(self.optimizer, dict):
+            opt_g = self.optimizer["model"]
+            opt_d = self.optimizer["discriminator"]
+            return opt_g, opt_d
+        opt_d = getattr(self, "optimizer_d", None)
+        if opt_d is None:
+            opt = self.optimizer.__class__
+            vals = self.optimizer.defaults.copy()
+            opt_d = opt(self.discriminator.parameters(), **vals)
+        return self.optimizer, opt_d
+
+    def _get_x(self, batch):
+        if "audio" in batch:
+            x = batch["audio"]
+        elif "waveform" in batch:
+            x = batch["waveform"]
+        else:
+            raise KeyError("audio")
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        return x
 
     def process_batch(self, batch, metrics: MetricTracker):
         """
@@ -27,29 +61,69 @@ class Trainer(BaseTrainer):
                 model outputs, and losses.
         """
         batch = self.move_batch_to_device(batch)
-        batch = self.transform_batch(batch)  # transform batch on device -- faster
+        batch = self.transform_batch(batch)
 
+        x = self._get_x(batch)
         metric_funcs = self.metrics["inference"]
         if self.is_train:
             metric_funcs = self.metrics["train"]
-            self.optimizer.zero_grad()
+            self.discriminator.train()
 
-        outputs = self.model(**batch)
-        batch.update(outputs)
+            x_hat, commit_loss, indices = self.model(x)
+            fmaps_real = self.discriminator(x)
+            fmaps_fake = self.discriminator(x_hat.detach())
+            d_real = [fm[-1] for fm in fmaps_real]
+            d_fake = [fm[-1] for fm in fmaps_fake]
+            loss_d = self.loss.adv_loss.d_loss(d_real, d_fake)
 
-        all_losses = self.criterion(**batch)
-        batch.update(all_losses)
+            self.opt_d.zero_grad()
+            loss_d.backward()
+            self.opt_d.step()
 
-        if self.is_train:
-            batch["loss"].backward()  # sum of all losses is always called loss
+            for p in self.discriminator.parameters():
+                p.requires_grad_(False)
+
+            fmaps_real = self.discriminator(x)
+            fmaps_fake = self.discriminator(x_hat)
+            fmaps_real = [[f.detach() for f in fm] for fm in fmaps_real]
+            loss_g, losses = self.loss(x, x_hat, fmaps_real, fmaps_fake, commit_loss)
+
+            self.opt_g.zero_grad()
+            loss_g.backward()
             self._clip_grad_norm()
-            self.optimizer.step()
-            if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+            self.opt_g.step()
 
-        # update metrics for each loss (in case of multiple losses)
-        for loss_name in self.config.writer.loss_names:
-            metrics.update(loss_name, batch[loss_name].item())
+            for p in self.discriminator.parameters():
+                p.requires_grad_(True)
+
+        else:
+            self.discriminator.eval()
+            x_hat, commit_loss, indices = self.model(x)
+            fmaps_real = self.discriminator(x)
+            fmaps_fake = self.discriminator(x_hat)
+            fmaps_real = [[f.detach() for f in fm] for fm in fmaps_real]
+            loss_g, losses = self.loss(x, x_hat, fmaps_real, fmaps_fake, commit_loss)
+            loss_d = self.loss.adv_loss.d_loss(
+                [fm[-1] for fm in fmaps_real], [fm[-1] for fm in fmaps_fake]
+            )
+            batch["STOI"] = self.stoi(x_hat.squeeze(1), x.squeeze(1))
+
+        batch["x"] = x
+        batch["x_hat"] = x_hat
+        batch["loss"] = loss_g
+        batch["loss_g"] = loss_g.detach()
+        batch["loss_d"] = loss_d.detach()
+        batch.update(losses)
+        probs = torch.zeros(self.model.rvq.quantizers[0].codebook_size, device=indices.device)
+        for i in range(indices.shape[1]):
+            probs = probs + torch.bincount(indices[:, i, :].flatten(), minlength=probs.shape[0])
+        probs = probs / probs.sum()
+        perp = torch.exp(-(probs * torch.log(probs + 1e-10)).sum())
+        batch["codebook_perplexity"] = perp.detach()
+
+        for loss_name in ["loss", "loss_d", "loss_g", "loss_rec", "loss_adv", "loss_feat", "loss_commit", "codebook_perplexity", "STOI"]:
+            if loss_name in batch:
+                metrics.update(loss_name, batch[loss_name].item())
 
         for met in metric_funcs:
             metrics.update(met.name, met(**batch))
@@ -67,13 +141,11 @@ class Trainer(BaseTrainer):
             mode (str): train or inference. Defines which logging
                 rules to apply.
         """
-        # method to log data from you batch
-        # such as audio, text or images, for example
-
-        # logging scheme might be different for different partitions
-        if mode == "train":  # the method is called only every self.log_step steps
-            # Log Stuff
-            pass
-        else:
-            # Log Stuff
-            pass
+        if mode == "train":
+            return
+        if batch_idx != 0:
+            return
+        x = batch["x"][0].detach().cpu()
+        x_hat = batch["x_hat"][0].detach().cpu().clamp(-1, 1)
+        self.writer.add_audio("audio/real", x, 16000)
+        self.writer.add_audio("audio/recon", x_hat, 16000)

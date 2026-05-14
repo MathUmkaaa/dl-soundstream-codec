@@ -117,10 +117,17 @@ class BaseTrainer:
 
         # define metrics
         self.metrics = metrics
+        train_metric_names = list(
+            dict.fromkeys(
+                [
+                    *self.config.writer.loss_names,
+                    "grad_norm",
+                    *[m.name for m in self.metrics["train"]],
+                ]
+            )
+        )
         self.train_metrics = MetricTracker(
-            *self.config.writer.loss_names,
-            "grad_norm",
-            *[m.name for m in self.metrics["train"]],
+            *train_metric_names,
             writer=self.writer,
         )
         self.evaluation_metrics = MetricTracker(
@@ -218,7 +225,7 @@ class BaseTrainer:
                 else:
                     raise e
 
-            self.train_metrics.update("grad_norm", self._get_grad_norm())
+            self.train_metrics.update("grad_norm", float(self._get_grad_norm()))
 
             # log current results
             if batch_idx % self.log_step == 0:
@@ -449,7 +456,12 @@ class BaseTrainer:
         if self.writer is None:
             return
         for metric_name in metric_tracker.keys():
-            self.writer.add_scalar(f"{metric_name}", metric_tracker.avg(metric_name))
+            scalar = metric_tracker.avg(metric_name)
+            if isinstance(scalar, torch.Tensor):
+                scalar = scalar.item()
+            elif hasattr(scalar, "iloc"):
+                scalar = scalar.iloc[0]
+            self.writer.add_scalar(f"{metric_name}", float(scalar))
 
     def _save_checkpoint(self, epoch, save_best=False, only_best=False):
         """
