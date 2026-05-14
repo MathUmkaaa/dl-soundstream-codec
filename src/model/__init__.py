@@ -1,5 +1,7 @@
-from src.model.baseline_model import BaselineModel
+from src.model.discriminator import MultiDiscriminator
+from src.model.soundstream import SoundStream
 
 __all__ = [
-    "BaselineModel",
+    "MultiDiscriminator",
+    "SoundStream",
 ]
