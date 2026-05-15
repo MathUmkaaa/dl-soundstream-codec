@@ -1,8 +1,8 @@
-# torch==2.2.0
-# torchvision==0.17.0
-# torchaudio
+# torch==2.2.0 # for Colab
+# torchvision==0.17.0 # for Colab
+# torchaudio # for Colab
 torchmetrics>=1.5
-# numpy==1.26.4
+# numpy==1.26.4 # for Colab
 tqdm
 matplotlib
 pandas
