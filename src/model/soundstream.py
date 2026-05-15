@@ -8,6 +8,8 @@ from src.model.rvq import ResidualVectorQuantizer
 
 
 class SoundStream(nn.Module):
+    "Full codec: encoder - RVQ - decoder.Returns reconstructed waveform, commit loss and code indices"
+
     def __init__(
         self,
         num_quantizers=8,

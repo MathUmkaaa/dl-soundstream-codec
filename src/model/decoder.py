@@ -2,6 +2,8 @@ from torch import nn
 from torch.nn import Sequential
 
 class ResidualUnit(nn.Module):
+    "Same residual unit as in the encoder"
+
     def __init__(self, channels, dilation=1):
         super().__init__()
         self.layers = Sequential(
@@ -15,6 +17,8 @@ class ResidualUnit(nn.Module):
         return x + self.layers(x)
 
 class DecoderBlock(nn.Module):
+    "Transposed conv that halves channels, then three residual units"
+
     def __init__(self, channels, stride):
         super().__init__()
         self.layers = Sequential(
@@ -28,7 +32,7 @@ class DecoderBlock(nn.Module):
         return self.layers(x)
 
 class Decoder(nn.Module):
-    "SEANet decoder"
+    "SEANet decoder, mirrors the encoder with strides 5-5-4-2, final tanh keeps output in [-1, 1]"
 
     def __init__(self):
         super().__init__()

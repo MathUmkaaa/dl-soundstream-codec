@@ -41,6 +41,8 @@ class STFTResidualUnit(nn.Module):
 
 
 class STFTDiscriminator(nn.Module):
+    "2D discriminator on complex STFT"
+
     def __init__(self, n_fft=1024, hop_length=256, win_length=1024):
         super().__init__()
         self.n_fft = n_fft
@@ -80,6 +82,8 @@ class STFTDiscriminator(nn.Module):
 
 
 class MultiDiscriminator(nn.Module):
+    "Three wave discriminators at three scales and one STFT discriminator"
+
     def __init__(self):
         super().__init__()
         self.wave_discriminators = nn.ModuleList([

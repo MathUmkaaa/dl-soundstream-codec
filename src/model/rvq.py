@@ -3,6 +3,8 @@ from torch import nn
 import torch.nn.functional as F
 
 class VectorQuantizer (nn.Module):
+    "Single VQ layer with EMA codebook update, returns quantized vectors, commitment loss and indices"
+
     def __init__(self, codebook_size, codebook_dim, ema_coef, commit_coef, eps=1e-5):
         super().__init__()
         self.codebook_size = codebook_size
@@ -30,6 +32,7 @@ class VectorQuantizer (nn.Module):
         one_hot = F.one_hot(i_nearest, self.codebook_size).float()
         quantized = F.embedding(i_nearest, self.codebook).view(batch_size, count_frames, codebook_dim).permute(0, 2, 1)
 
+        # EMA codebook update
         if self.training:
             with torch.no_grad():
                 self.ema_count.mul_(self.ema_coef).add_(one_hot.sum(dim=0), alpha=1 - self.ema_coef)
@@ -44,6 +47,8 @@ class VectorQuantizer (nn.Module):
         return quantized, commit_loss, indices
 
 class ResidualVectorQuantizer(nn.Module):
+    "Stack of N vector quantizers operating on the residuals, sums their outputs"
+
     def __init__(self, num_quantizers, codebook_size, codebook_dim, ema_coef, commit_coef, eps=1e-5):
         super().__init__()
         self.num_quantizers = num_quantizers

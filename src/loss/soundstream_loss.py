@@ -53,6 +53,8 @@ class AdvLoss(nn.Module):
 
 
 class FeatLoss(nn.Module):
+    "Feature matching loss between real and fake feature maps"
+
     def __init__(self):
         super().__init__()
 
@@ -67,6 +69,8 @@ class FeatLoss(nn.Module):
 
 
 class SoundStreamLoss(nn.Module):
+    "Total loss = rec + adv + feat + commit"
+
     def __init__(self, lambda_adv=1.0, lambda_feat=100.0, lambda_rec=1.0, lambda_commit=1.0, sample_rate=16000, n_mels=64):
         super().__init__()
         self.lambda_adv = lambda_adv
