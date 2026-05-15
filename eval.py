@@ -9,6 +9,7 @@ from torchmetrics.audio import ShortTimeObjectiveIntelligibility
 from torchmetrics.audio.nisqa import NonIntrusiveSpeechQualityAssessment
 
 from src.model.soundstream import SoundStream
+import comet_ml
 
 SR = 16000
 
@@ -19,12 +20,15 @@ def main():
     parser.add_argument("--data_dir", type=str, required=True)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--comet", action="store_true", help="STOI and NIQSA")
+    parser.add_argument("--comet_project", type=str, default="soundstream-eval")
+    parser.add_argument("--comet_run_name", type=str, default="test-clean")
     args = parser.parse_args()
 
     device = args.device
     model = SoundStream().to(device)
 
-    ckpt = torch.load(args.ckpt, map_location=device)
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=False)
     if isinstance(ckpt, dict) and "state_dict" in ckpt:
         ckpt = ckpt["state_dict"]
     model.load_state_dict(ckpt)
@@ -59,6 +63,18 @@ def main():
     mean_nisqa = sum(nisqa_vals) / len(nisqa_vals)
     print("STOI", mean_stoi)
     print("NISQA", mean_nisqa)
+
+    if args.comet:
+        comet_ml.login()
+        exp = comet_ml.Experiment(project_name=args.comet_project)
+        exp.set_name(args.comet_run_name)
+        exp.log_parameters({
+            "ckpt": args.ckpt,
+            "data_dir": args.data_dir,
+            "num_files": len(files),
+        })
+        exp.log_metrics({"STOI": mean_stoi, "NISQA": mean_nisqa})
+        exp.end()
 
 
 if __name__ == "__main__":
